@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>String Vibration — Interactive Sound Demo</title>
+<style>
+body{font-family:system-ui,Arial,sans-serif;max-width:760px;margin:32px auto;padding:0 18px;color:#1b2735;background:#f7f9fc}h1{font-size:26px}.panel{background:white;border:1px solid #dce3ec;border-radius:14px;padding:20px;margin:15px 0}label{display:flex;justify-content:space-between;gap:12px;margin-top:12px}input[type=range]{width:100%;accent-color:#1674d1}.metrics{display:flex;justify-content:space-around;text-align:center;gap:10px}.metric{font-size:23px;font-weight:700}.small{color:#657488;font-size:13px}button{background:#176fc1;color:white;border:0;border-radius:9px;padding:12px 18px;cursor:pointer;font-size:15px}button.secondary{background:#e8eef6;color:#1c3552}.controls{display:flex;gap:9px;flex-wrap:wrap}.mode{display:grid;grid-template-columns:75px 1fr 42px;gap:10px;align-items:center;margin:10px 0}.mode input{margin:0}svg{width:100%;height:auto}#play{width:100%;font-weight:700;font-size:18px}#status{text-align:center}code{background:#e9eef5;padding:2px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>Interactive String Vibration Synthesizer</h1>
+<p>For an ideal string fixed at both ends: <strong>f<sub>n</sub> = nc / (2L) = nf<sub>1</sub></strong>.</p>
+<div class="panel">
+<svg viewBox="0 0 440 150" aria-label="Animated string vibration" role="img"><line x1="20" y1="75" x2="420" y2="75" stroke="#9eacbd" stroke-dasharray="4 5"/><path id="curve" stroke="#1684dc" stroke-width="3" fill="none"/><circle cx="20" cy="75" r="4"/><circle cx="420" cy="75" r="4"/></svg>
+<div class="metrics"><div><div class="small">Fundamental frequency</div><div class="metric" id="freq">300 Hz</div></div><div><div class="small">Angular frequency ω₁</div><div class="metric" id="omega">1885 rad/s</div></div></div>
+</div>
+<div class="panel">
+<label for="length">String length L <strong id="lengthValue">0.50 m</strong></label><input id="length" type="range" min="0.2" max="1.5" step="0.01" value="0.5">
+<label for="speed">Wave speed c <strong id="speedValue">300 m/s</strong></label><input id="speed" type="range" min="100" max="600" step="5" value="300">
+<h3>Mode amplitudes</h3><div id="modes"></div>
+<div class="controls"><button class="secondary" id="pure">Fundamental only</button><button class="secondary" id="rich">Harmonic string</button></div>
+</div>
+<button id="play">▶ Play Sound</button><p class="small" id="status">Press Play to hear the synthesized string vibration.</p>
+<p class="small">Audio: s(t) = Σ A<sub>n</sub> sin(2πnf<sub>1</sub>t). The animation is slowed down to make vibration visible.</p>
+<script>
+(()=>{
+const $=id=>document.getElementById(id), length=$('length'),speed=$('speed');
+let amps=[1,.45,.25,.15,.1],ctx=null,osc=[],gains=[],master=null,playing=false,phase=0,last=0;
+const AC=window.AudioContext||window.webkitAudioContext;
+for(let i=0;i<5;i++){
+ const row=document.createElement('div');row.className='mode';
+ const name=document.createElement('span');name.textContent='Mode '+(i+1);
+ const slider=document.createElement('input');slider.type='range';slider.min=0;slider.max=1;slider.step=.01;slider.value=amps[i];slider.setAttribute('aria-label','Mode '+(i+1)+' amplitude');
+ const value=document.createElement('span');value.textContent=amps[i].toFixed(2);
+ slider.oninput=()=>{amps[i]=+slider.value;value.textContent=amps[i].toFixed(2);update()};
+ row.append(name,slider,value);$('modes').append(row);
+}
+const f1=()=>+speed.value/(2*+length.value);
+function update(){const f=f1();$('lengthValue').textContent=(+length.value).toFixed(2)+' m';$('speedValue').textContent=speed.value+' m/s';$('freq').textContent=f.toFixed(1)+' Hz';$('omega').textContent=(2*Math.PI*f).toFixed(0)+' rad/s';if(ctx){osc.forEach((o,i)=>{o.frequency.setTargetAtTime(f*(i+1),ctx.currentTime,.015);gains[i].gain.setTargetAtTime(amps[i]/5,ctx.currentTime,.015)})}}
+function preset(a){amps=a;document.querySelectorAll('#modes .mode').forEach((row,i)=>{row.querySelector('input').value=amps[i];row.querySelector('span:last-child').textContent=amps[i].toFixed(2)});update()}
+$('pure').onclick=()=>preset([1,0,0,0,0]);$('rich').onclick=()=>preset([1,.6,.35,.22,.14]);length.oninput=update;speed.oninput=update;
+$('play').onclick=async()=>{
+ if(playing){osc.forEach(o=>{try{o.stop()}catch(e){}});osc=[];gains=[];if(master){master.disconnect();master=null}playing=false;$('play').textContent='▶ Play Sound';$('status').textContent='Sound stopped.';return}
+ if(!AC){$('status').textContent='Web Audio is unavailable in this browser.';return}
+ try{ctx=ctx||new AC();await ctx.resume();master=ctx.createGain();master.gain.value=.42;master.connect(ctx.destination);for(let i=0;i<5;i++){const o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.value=f1()*(i+1);g.gain.value=amps[i]/5;o.connect(g);g.connect(master);o.start();osc.push(o);gains.push(g)}playing=true;$('play').textContent='■ Stop Sound';$('status').textContent='Sound playing — adjust the sliders to hear changes.'}catch(e){$('status').textContent='Audio playback failed: '+e.message}
+};
+function animate(t){const dt=last?Math.min((t-last)/1000,.05):0;last=t;if(playing)phase+=dt*3;let d='',norm=Math.max(1,amps.reduce((a,b)=>a+b,0));for(let j=0;j<=160;j++){let x=j/160,y=0;for(let n=1;n<=5;n++)y+=amps[n-1]*Math.sin(n*Math.PI*x)*Math.cos(phase*(1+.2*n));y/=norm;d+=(j?'L':'M')+(20+400*x).toFixed(2)+' '+(75-55*y).toFixed(2)+' '}$('curve').setAttribute('d',d);requestAnimationFrame(animate)}update();requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>
